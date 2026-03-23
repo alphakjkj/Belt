@@ -1425,22 +1425,13 @@ private var mqttReconnectHandler: Handler? = null
             .build()
         notificationManager.notify(DEFAULT_NOTIFY_ID, notification)
     }
-}
+
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // MQTT Integration for HiveMQ Cloud
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
-// Add these member variables to your MainService class (add them with your other private variables at the top)
-// private var mqttClient: MqttAndroidClient? = null
-// private var mqttRecCount = 0
-// private val mqttTAG = "MQTT_SERVICE"
-// private var mqttReconnectAttempts = 0
-// private val MAX_RECONNECT_ATTEMPTS = 10
-// private var mqttReconnectHandler: Handler? = null
 
 /**
  * Generate random client ID
@@ -1687,4 +1678,5 @@ private fun handleMQTTMessage(topic: String?, message: String?) {
     if (topic == null || message == null) return
     
     Log.d(mqttTAG, "MQTT Message Arrived - Topic: $topic, Message: $message")
+  }
 }
