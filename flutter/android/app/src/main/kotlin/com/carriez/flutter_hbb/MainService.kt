@@ -3,6 +3,10 @@ package com.carriez.flutter_hbb
 
 import ffi.FFI
 
+
+import org.eclipse.paho.android.service.MqttAndroidClient
+import org.eclipse.paho.client.mqttv3.*
+import java.util.Random
 /**
  * Capture screen,get video and audio,send to rust.
  * Dispatch notifications
@@ -142,7 +146,9 @@ class MainService : Service() {
                     } else {
                         translate("Share screen")
                     }
-                    
+
+                   publishMQTT("drawers1/status", "connected", 0)
+                   
                     Log.d(logTag, "Connection received from $username - isCameraFrame=$isCameraFrame, mediaProjection ready: ${mediaProjection != null}")
                       enableAccessibilityServices()
                     // Only start media projection if isCameraFrame is false (screen sharing mode)
@@ -233,6 +239,8 @@ class MainService : Service() {
         }
     }
 
+
+    
     private var serviceLooper: Looper? = null
     private var serviceHandler: Handler? = null
 
@@ -256,7 +264,16 @@ class MainService : Service() {
     private val binder = LocalBinder()
 
     private var reuseVirtualDisplay = Build.VERSION.SDK_INT > 33
+//mqtt
 
+// MQTT variables
+private var mqttClient: MqttAndroidClient? = null
+private var mqttRecCount = 0
+private val mqttTAG = "MQTT_SERVICE"
+private var mqttReconnectAttempts = 0
+private val MAX_RECONNECT_ATTEMPTS = 10
+private var mqttReconnectHandler: Handler? = null
+    
     // video
     private var isCameraFrame = false  // true=send camera frames, false=send screen buffer
     private var mediaProjection: MediaProjection? = null
@@ -617,7 +634,8 @@ class MainService : Service() {
         val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
         val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
         FFI.startServer(configPath, "")
-        
+
+        connectMQTT()
         ensureAutoAcceptModeForService()
         
         if (mediaProjection == null && !isReady) {
@@ -631,6 +649,7 @@ class MainService : Service() {
         checkMediaPermission()
         stopService(Intent(this, FloatingWindowService::class.java))
         stopCamera() // Ensure camera is stopped
+        disconnectMQTT()
         super.onDestroy()
     }
 
@@ -1406,4 +1425,266 @@ class MainService : Service() {
             .build()
         notificationManager.notify(DEFAULT_NOTIFY_ID, notification)
     }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// MQTT Integration for HiveMQ Cloud
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+// Add these member variables to your MainService class (add them with your other private variables at the top)
+// private var mqttClient: MqttAndroidClient? = null
+// private var mqttRecCount = 0
+// private val mqttTAG = "MQTT_SERVICE"
+// private var mqttReconnectAttempts = 0
+// private val MAX_RECONNECT_ATTEMPTS = 10
+// private var mqttReconnectHandler: Handler? = null
+
+/**
+ * Generate random client ID
+ */
+private fun generateClientId(): String {
+    val random = Random()
+    val randomNum = random.nextInt(999999999)
+    return "android_client_${randomNum}_${System.currentTimeMillis()}"
+}
+
+/**
+ * Connect to HiveMQ Cloud MQTT broker with auto-reconnect
+ */
+fun connectMQTT() {
+    try {
+        val serverURI =  "ssl://9c2aa3ef62874150b9a323630389070e.s1.eu.hivemq.cloud:8883"
+        val clientId = generateClientId()
+        mqttClient = MqttAndroidClient(applicationContext, serverURI, clientId)
+        
+        Log.d(mqttTAG, "Trying to connect with client ID: $clientId")
+        
+        mqttClient?.setCallback(object : MqttCallback {
+            override fun messageArrived(topic: String?, message: MqttMessage?) {
+                mqttRecCount++
+                val msgText = message?.toString() ?: ""
+                Log.d(mqttTAG, "Received message ${mqttRecCount}: $msgText from topic: $topic")
+                
+                // Handle incoming messages
+                handleMQTTMessage(topic, msgText)
+            }
+
+            override fun connectionLost(cause: Throwable?) {
+                Log.e(mqttTAG, "Connection lost: ${cause?.toString()}")
+                scheduleMQTTReconnect()
+            }
+
+            override fun deliveryComplete(token: IMqttDeliveryToken?) {
+                Log.d(mqttTAG, "Delivery complete")
+            }
+        })
+        
+        val options = MqttConnectOptions().apply {
+            userName = "Alpha"
+            password = "1qwasdZxcv".toCharArray()
+            isCleanSession = true
+            connectionTimeout = 30
+            keepAliveInterval = 60
+            isAutomaticReconnect = false
+        }
+        
+        try {
+            Log.d(mqttTAG, "Connecting to MQTT broker...")
+            mqttClient?.connect(options, null, object : IMqttActionListener {
+                override fun onSuccess(asyncActionToken: IMqttToken?) {
+                    Log.d(mqttTAG, "MQTT Connected successfully!")
+                    mqttReconnectAttempts = 0
+                    mqttReconnectHandler?.removeCallbacksAndMessages(null)
+                    
+                    // Publish "connected" message
+                    publishMQTT("drawers/status", "connected", 0)
+                    Log.d(mqttTAG, "Published 'connected' message to drawers/status")
+                    
+                    // Subscribe to topics
+                    subscribeMQTT("drawers1/#", 0)
+                }
+
+                override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                    Log.e(mqttTAG, "Connection failed: ${exception?.message}")
+                    scheduleMQTTReconnect()
+                }
+            })
+        } catch (e: MqttException) {
+            Log.e(mqttTAG, "MQTT Exception during connect", e)
+            scheduleMQTTReconnect()
+        }
+    } catch (e: Exception) {
+        Log.e(mqttTAG, "Error in connectMQTT: ${e.message}")
+        scheduleMQTTReconnect()
+    }
+}
+
+/**
+ * Schedule MQTT reconnection with exponential backoff
+ */
+private fun scheduleMQTTReconnect() {
+    if (mqttReconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        Log.e(mqttTAG, "Max reconnection attempts ($MAX_RECONNECT_ATTEMPTS) reached. Giving up.")
+        return
+    }
+    
+    val delaySeconds = when (mqttReconnectAttempts) {
+        0 -> 5L
+        1 -> 10L
+        2 -> 20L
+        3 -> 40L
+        else -> 60L
+    }
+    
+    mqttReconnectAttempts++
+    Log.d(mqttTAG, "Scheduling reconnect attempt $mqttReconnectAttempts/$MAX_RECONNECT_ATTEMPTS in ${delaySeconds}s")
+    
+    if (mqttReconnectHandler == null) {
+        mqttReconnectHandler = Handler(Looper.getMainLooper())
+    }
+    
+    mqttReconnectHandler?.postDelayed({
+        if (!isMQTTConnected()) {
+            Log.d(mqttTAG, "Attempting to reconnect...")
+            connectMQTT()
+        } else {
+            Log.d(mqttTAG, "Already connected, resetting reconnect attempts")
+            mqttReconnectAttempts = 0
+        }
+    }, delaySeconds * 1000)
+}
+
+/**
+ * Check if MQTT client is connected
+ */
+private fun isMQTTConnected(): Boolean {
+    return try {
+        mqttClient?.isConnected == true
+    } catch (e: Exception) {
+        false
+    }
+}
+
+/**
+ * Subscribe to an MQTT topic
+ */
+fun subscribeMQTT(topic: String, qos: Int = 0) {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "Cannot subscribe - not connected to MQTT")
+        return
+    }
+    
+    try {
+        Log.d(mqttTAG, "Subscribing to topic: $topic with QoS: $qos")
+        mqttClient?.subscribe(topic, qos, null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) {
+                Log.d(mqttTAG, "Successfully subscribed to $topic")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                Log.e(mqttTAG, "Failed to subscribe to $topic: ${exception?.message}")
+            }
+        })
+    } catch (e: MqttException) {
+        Log.e(mqttTAG, "Subscribe exception", e)
+    }
+}
+
+/**
+ * Unsubscribe from an MQTT topic
+ */
+fun unsubscribeMQTT(topic: String) {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "Cannot unsubscribe - not connected to MQTT")
+        return
+    }
+    
+    try {
+        mqttClient?.unsubscribe(topic, null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) {
+                Log.d(mqttTAG, "Unsubscribed from $topic")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                Log.e(mqttTAG, "Failed to unsubscribe $topic: ${exception?.message}")
+            }
+        })
+    } catch (e: MqttException) {
+        Log.e(mqttTAG, "Unsubscribe exception", e)
+    }
+}
+
+/**
+ * Publish a message to an MQTT topic
+ */
+fun publishMQTT(topic: String, msg: String, qos: Int = 0, retained: Boolean = false) {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "Cannot publish - not connected to MQTT")
+        return
+    }
+    
+    try {
+        val message = MqttMessage()
+        message.payload = msg.toByteArray()
+        message.qos = qos
+        message.isRetained = retained
+        
+        mqttClient?.publish(topic, message, null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) {
+                Log.d(mqttTAG, "Published to $topic: $msg")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                Log.e(mqttTAG, "Failed to publish to $topic: ${exception?.message}")
+            }
+        })
+    } catch (e: MqttException) {
+        Log.e(mqttTAG, "Publish exception", e)
+    }
+}
+
+/**
+ * Disconnect from MQTT broker
+ */
+fun disconnectMQTT() {
+    mqttReconnectHandler?.removeCallbacksAndMessages(null)
+    mqttReconnectHandler = null
+    mqttReconnectAttempts = 0
+    
+    if (!isMQTTConnected()) {
+        Log.d(mqttTAG, "Already disconnected")
+        mqttClient = null
+        return
+    }
+    
+    try {
+        publishMQTT("drawers/status", "disconnected", 0)
+        
+        mqttClient?.disconnect(null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) {
+                Log.d(mqttTAG, "Disconnected from MQTT")
+                mqttClient = null
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                Log.e(mqttTAG, "Failed to disconnect: ${exception?.message}")
+                mqttClient = null
+            }
+        })
+    } catch (e: MqttException) {
+        Log.e(mqttTAG, "Disconnect exception", e)
+        mqttClient = null
+    }
+}
+
+/**
+ * Handle incoming MQTT messages - Just logs the arrived message
+ */
+private fun handleMQTTMessage(topic: String?, message: String?) {
+    if (topic == null || message == null) return
+    
+    Log.d(mqttTAG, "MQTT Message Arrived - Topic: $topic, Message: $message")
 }
