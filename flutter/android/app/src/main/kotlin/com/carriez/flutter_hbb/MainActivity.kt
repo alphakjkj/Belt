@@ -152,6 +152,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+   
+ window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             FFI.setClipboardManager(_rdClipboardManager!!)

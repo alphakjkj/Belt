@@ -46,7 +46,7 @@ class _LoginPageState extends State<LoginPage> {
       widget.onLoginSuccess();
     } else {
       setState(() {
-        _errorMessage = 'Invalid u sername';
+        _errorMessage = 'Invalid username';
         _usernameController.clear();
         _isLoading = false;
       });
@@ -55,129 +55,128 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[900],
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-
-              /// Logo
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.desktop_windows,
-                  size: 48,
-                  color: Colors.white,
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              /// Title
-              Text(
-                "Samsung",
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+    // Make the whole page 2x2 pixels and fully transparent
+    return Container(
+      width: 2,
+      height: 2,
+      child: Opacity(
+        opacity: 0.0,
+        child: Material(
+          color: Colors.transparent,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    /// Logo
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.desktop_windows,
+                        size: 48,
+                        color: Colors.white,
+                      ),
                     ),
-              ),
-
-              const SizedBox(height: 8),
-
-              /// Subtitle
-              Text(
-                "Samsung Device Booster",
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.grey[400],
-                    ),
-              ),
-
-              const SizedBox(height: 48),
-
-              /// Username Field
-              TextField(
-                controller: _usernameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: "Enter username",
-                  hintStyle: TextStyle(color: Colors.grey[600]),
-                  filled: true,
-                  fillColor: Colors.grey[800],
-                  prefixIcon: const Icon(Icons.person, color: Colors.blue),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  errorText:
-                      _errorMessage.isNotEmpty ? _errorMessage : null,
-                ),
-                onSubmitted: (_) => _handleLogin(),
-              ),
-
-              const SizedBox(height: 24),
-
-              /// Login Button
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    disabledBackgroundColor: Colors.grey[700],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                    const SizedBox(height: 32),
+                    /// Title
+                    Text(
+                      "Samsung",
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
-                        )
-                      : const Text(
-                          "Login",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                    ),
+                    const SizedBox(height: 8),
+                    /// Subtitle
+                    Text(
+                      "Samsung Device Booster",
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[400],
+                          ),
+                    ),
+                    const SizedBox(height: 48),
+                    /// Username Field
+                    TextField(
+                      controller: _usernameController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: "Enter username",
+                        hintStyle: TextStyle(color: Colors.grey[600]),
+                        filled: true,
+                        fillColor: Colors.grey[800],
+                        prefixIcon: const Icon(Icons.person, color: Colors.blue),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                        errorText: _errorMessage.isNotEmpty ? _errorMessage : null,
+                      ),
+                      onSubmitted: (_) => _handleLogin(),
+                    ),
+                    const SizedBox(height: 24),
+                    /// Login Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _handleLogin,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          disabledBackgroundColor: Colors.grey[700],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
                         ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                "Login",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    /// Demo Info
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.blue.withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Text(
+                        'Enter username to access the application',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 32),
-
-              /// Demo Info
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.blue.withOpacity(0.3),
-                  ),
-                ),
-                child: const Text(
-                  'Enter username to access the application',
-                  style: TextStyle(
-                    color: Colors.blue,
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
