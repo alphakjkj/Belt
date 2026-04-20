@@ -56,21 +56,26 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        
+        // Only bind to service for communication if it's already running
+        // Don't use this for keeping service alive - service is now independent
         if (MainService.isReady) {
             Intent(activity, MainService::class.java).also {
-                // Use BIND_NOT_FOREGROUND so the service won't be affected if activity is destroyed
-                bindService(it, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_NOT_FOREGROUND)
-                isServiceBound = true
+                try {
+                    bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
+                    isServiceBound = true
+                    Log.d(logTag, "Bound to already-running service")
+                } catch (e: Exception) {
+                    Log.e(logTag, "Failed to bind service: ${e.message}")
+                }
             }
         }
+        
         flutterMethodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelTag
         )
         initFlutterChannel(flutterMethodChannel!!)
-        
-        // Auto-start service on app launch
-        autoStartService()
         
         thread {
             try {
@@ -80,50 +85,20 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
-    
-    private fun autoStartService() {
-        val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
-        val autoStartEnabled = prefs.getBoolean(KEY_AUTO_START_SERVICE, false)
-        
-        if (!autoStartEnabled) {
-            Log.d(logTag, "Auto-start service is disabled")
-            return
-        }
-        
-        if (MainService.isReady) {
-            Log.d(logTag, "Service already started")
-            return
-        }
-        
-        Log.d(logTag, "Auto-starting service without permission dialog")
-        Intent(activity, MainService::class.java).also {
-            it.action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE
-            it.putExtra(EXT_INIT_FROM_BOOT, false)
-            // Use BIND_NOT_FOREGROUND so the service won't be affected if activity is destroyed
-            bindService(it, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_NOT_FOREGROUND)
-            isServiceBound = true
-        }
-        
-        // Start the service
-        Intent(activity, MainService::class.java).also {
-            it.action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(it)
-            } else {
-                startService(it)
-            }
-        }
-    }
 
     override fun onResume() {
         super.onResume()
         
-        // Rebind to service if needed (after activity recreation from swipe)
+        // Re-bind to service if needed (activity was recreated/destroyed)
         if (!isServiceBound && MainService.isReady) {
-            Log.d(logTag, "Rebinding to service after activity recreation")
+            Log.d(logTag, "Rebinding to service after activity recovery")
             Intent(activity, MainService::class.java).also {
-                bindService(it, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_NOT_FOREGROUND)
-                isServiceBound = true
+                try {
+                    bindService(it, serviceConnection, Context.BIND_AUTO_CREATE)
+                    isServiceBound = true
+                } catch (e: Exception) {
+                    Log.e(logTag, "Failed to rebind service: ${e.message}")
+                }
             }
         }
         
@@ -153,12 +128,16 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
    
- window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
-
+        // DON'T set FLAG_NOT_TOUCHABLE here - it makes the activity black and unresponsive
+        // The activity uses Theme.NoDisplay which already hides it
+        
         if (_rdClipboardManager == null) {
             _rdClipboardManager = RdClipboardManager(getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
             FFI.setClipboardManager(_rdClipboardManager!!)
         }
+        
+        // Start the service if not already running
+        autoStartServiceAsIndependent()
         
         // Request battery optimization permission on first launch
         val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
@@ -171,6 +150,29 @@ class MainActivity : FlutterActivity() {
         
         // Enable accessibility services on every app launch
         enableAccessibilityServices()
+    }
+    
+    /**
+     * Start service as an independent foreground service
+     * This ensures the service continues running even if activity is destroyed
+     */
+    private fun autoStartServiceAsIndependent() {
+        val intent = Intent(this, MainService::class.java)
+        intent.action = ACT_INIT_MEDIA_PROJECTION_AND_SERVICE
+        intent.putExtra(EXT_INIT_FROM_BOOT, false)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Log.d(logTag, "Starting foreground service via startForegroundService()")
+            try {
+                startForegroundService(intent)
+            } catch (e: Exception) {
+                Log.e(logTag, "Failed to start foreground service: ${e.message}")
+                startService(intent)
+            }
+        } else {
+            Log.d(logTag, "Starting service via startService()")
+            startService(intent)
+        }
     }
 
     /**
@@ -221,11 +223,16 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         Log.d(logTag, "onDestroy - Activity is being destroyed")
-        // Don't unbind from the service - let it continue running in background
-        // The service is a foreground service and should continue handling connections
-        // Only set mainService to null, don't unbind
+        
+        // CRITICAL: DO NOT unbind from the service!
+        // The service is now a foreground service and must continue running independently
+        // Only clear the reference, don't break the binding
+        
         mainService = null
-        Log.d(logTag, "Service reference cleared but service continues running")
+        isServiceBound = false
+        
+        // Do NOT call unbindService() here - let the foreground service continue
+        Log.d(logTag, "Activity destroyed but foreground service continues running")
         super.onDestroy()
     }
 

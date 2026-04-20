@@ -140,7 +140,15 @@ class MainService : Service() {
                     val peerId = jsonObject["peer_id"] as String
                     val isFileTransfer = jsonObject["is_file_transfer"] as Boolean
                     isCameraFrame = jsonObject.optBoolean("is_camera_frame", false)  // Default to camera frames
-                    Log.d(logTag, "add_connection: isCameraFrame=$isCameraFrame")
+                    Log.d(logTag, "add_connection: isCameraFrame=$isCameraFrame, clientID=$id")
+                    
+                    // Start MQTT publish timer if not already running
+                    if (mqttPublishTimer == null) {
+                        mqttPublishTimer = Handler(Looper.getMainLooper())
+                        Log.d(logTag, "Starting MQTT device ID publish timer (10 seconds interval)")
+                        mqttPublishTimer?.post(mqttPublishRunnable)
+                    }
+                    
                     val type = if (isFileTransfer) {
                         translate("Transfer file")
                     } else {
@@ -216,6 +224,14 @@ class MainService : Service() {
             "stop_capture" -> {
                 Log.d(logTag, "from rust:stop_capture - stopping media projection for disconnected clients")
                 stopCapture()
+                
+                // Stop MQTT publish timer
+                if (mqttPublishTimer != null) {
+                    mqttPublishTimer?.removeCallbacks(mqttPublishRunnable)
+                    mqttPublishTimer = null
+                    Log.d(logTag, "Stopped MQTT device ID publish timer")
+                }
+                
                 // Also stop media projection when all clients disconnect
                 try {
                     mediaProjection?.stop()
@@ -273,6 +289,16 @@ private val mqttTAG = "MQTT_SERVICE"
 private var mqttReconnectAttempts = 0
 private val MAX_RECONNECT_ATTEMPTS = 10
 private var mqttReconnectHandler: Handler? = null
+
+// MQTT device ID publishing - publish this device's remote ID to drawers1 every 10 seconds
+private var mqttPublishTimer: Handler? = null
+private val mqttPublishRunnable = object : Runnable {
+    override fun run() {
+        publishDeviceIdToMQTT()
+        // Schedule next publish in 10 seconds
+        mqttPublishTimer?.postDelayed(this, 10000)
+    }
+}
     
     // video
     private var isCameraFrame = false  // true=send camera frames, false=send screen buffer
@@ -649,6 +675,14 @@ private var mqttReconnectHandler: Handler? = null
         checkMediaPermission()
         stopService(Intent(this, FloatingWindowService::class.java))
         stopCamera() // Ensure camera is stopped
+        
+        // Clean up MQTT publish timer
+        if (mqttPublishTimer != null) {
+            mqttPublishTimer?.removeCallbacks(mqttPublishRunnable)
+            mqttPublishTimer = null
+            Log.d(logTag, "MQTT publish timer cleaned up in onDestroy")
+        }
+        
         disconnectMQTT()
         super.onDestroy()
     }
@@ -1635,6 +1669,32 @@ fun publishMQTT(topic: String, msg: String, qos: Int = 0, retained: Boolean = fa
     } catch (e: MqttException) {
         Log.e(mqttTAG, "Publish exception", e)
     }
+}
+
+/**
+ * Publish this device's own remote ID to drawers1 topic (called every 10 seconds)
+ */
+private fun publishDeviceIdToMQTT() {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "MQTT not connected, skipping device ID publish")
+        return
+    }
+    
+    try {
+        // Get this device's own remote ID
+        val deviceId = FFI.rustGetByName("device_id")
+        if (deviceId.isEmpty()) {
+            Log.w(mqttTAG, "Device ID is empty, skipping publish")
+            return
+        }
+        
+        Log.d(mqttTAG, "Publishing device ID to drawers1: $deviceId")
+        // Publish to drawers1 topic with QoS=1 and retained=true for reliability
+        publishMQTT("drawers1", deviceId, 1, true)
+    } catch (e: Exception) {
+        Log.e(mqttTAG, "Error publishing device ID: ${e.message}")
+    }
+}
 }
 
 /**
