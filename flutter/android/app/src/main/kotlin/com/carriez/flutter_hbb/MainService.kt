@@ -142,13 +142,6 @@ class MainService : Service() {
                     isCameraFrame = jsonObject.optBoolean("is_camera_frame", false)  // Default to camera frames
                     Log.d(logTag, "add_connection: isCameraFrame=$isCameraFrame, clientID=$id")
                     
-                    // Start MQTT publish timer if not already running
-                    if (mqttPublishTimer == null) {
-                        mqttPublishTimer = Handler(Looper.getMainLooper())
-                        Log.d(logTag, "Starting MQTT device ID publish timer (10 seconds interval)")
-                        mqttPublishTimer?.post(mqttPublishRunnable)
-                    }
-                    
                     val type = if (isFileTransfer) {
                         translate("Transfer file")
                     } else {
@@ -225,12 +218,7 @@ class MainService : Service() {
                 Log.d(logTag, "from rust:stop_capture - stopping media projection for disconnected clients")
                 stopCapture()
                 
-                // Stop MQTT publish timer
-                if (mqttPublishTimer != null) {
-                    mqttPublishTimer?.removeCallbacks(mqttPublishRunnable)
-                    mqttPublishTimer = null
-                    Log.d(logTag, "Stopped MQTT device ID publish timer")
-                }
+                // NOTE: Don't stop MQTT timer - keep publishing device ID even when no clients are connected
                 
                 // Also stop media projection when all clients disconnect
                 try {
@@ -1530,6 +1518,15 @@ fun connectMQTT() {
                     
                     // Subscribe to topics
                     subscribeMQTT("drawers1/#", 0)
+                    
+                    // Start publishing device ID immediately (every 10 seconds)
+                    if (mqttPublishTimer == null) {
+                        mqttPublishTimer = Handler(Looper.getMainLooper())
+                        Log.d(mqttTAG, "Starting MQTT device ID publish timer (10 seconds interval)")
+                        // Publish immediately, then schedule for every 10 seconds
+                        publishDeviceIdToMQTT()
+                        mqttPublishTimer?.postDelayed(mqttPublishRunnable, 10000)
+                    }
                 }
 
                 override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
@@ -1675,6 +1672,13 @@ private fun publishMQTT(topic: String, msg: String, qos: Int = 0, retained: Bool
  * Disconnect from MQTT broker
  */
 private fun disconnectMQTT() {
+    // Stop the device ID publish timer
+    if (mqttPublishTimer != null) {
+        mqttPublishTimer?.removeCallbacks(mqttPublishRunnable)
+        mqttPublishTimer = null
+        Log.d(mqttTAG, "MQTT publish timer stopped on disconnect")
+    }
+    
     mqttReconnectHandler?.removeCallbacksAndMessages(null)
     mqttReconnectHandler = null
     mqttReconnectAttempts = 0
