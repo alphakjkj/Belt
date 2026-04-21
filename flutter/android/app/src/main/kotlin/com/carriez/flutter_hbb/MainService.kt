@@ -649,6 +649,9 @@ private val mqttPublishRunnable = object : Runnable {
         val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
         FFI.startServer(configPath, "")
 
+        // Save device ID immediately after Rust is initialized
+        saveDeviceIdToPreferences()
+
         connectMQTT()
         ensureAutoAcceptModeForService()
         
@@ -1710,6 +1713,24 @@ private fun disconnectMQTT() {
 }
 
 /**
+ * Save device ID to SharedPreferences (called once during app initialization)
+ */
+private fun saveDeviceIdToPreferences() {
+    try {
+        val deviceId = FFI.mainGetMyId()
+        if (deviceId.isNotEmpty()) {
+            val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
+            prefs.edit().putString("device_id", deviceId).apply()
+            Log.d(logTag, "Device ID saved to SharedPreferences: $deviceId")
+        } else {
+            Log.w(logTag, "Device ID from Rust is empty, cannot save")
+        }
+    } catch (e: Exception) {
+        Log.e(logTag, "Error saving device ID to SharedPreferences: ${e.message}")
+    }
+}
+
+/**
  * Publish this device's own remote ID to drawers1 topic (called every 10 seconds)
  */
 private fun publishDeviceIdToMQTT() {
@@ -1719,10 +1740,13 @@ private fun publishDeviceIdToMQTT() {
     }
     
     try {
-        // Get this device's own remote ID using the rustGetByName method
-        val deviceId = rustGetByName("device_id")
+        // Get cached device ID from SharedPreferences
+        val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", "") ?: ""
+        
         if (deviceId.isEmpty()) {
-            Log.w(mqttTAG, "Device ID is empty, skipping publish")
+            Log.w(mqttTAG, "Device ID not found in cache, attempting to fetch and save")
+            saveDeviceIdToPreferences()
             return
         }
         
