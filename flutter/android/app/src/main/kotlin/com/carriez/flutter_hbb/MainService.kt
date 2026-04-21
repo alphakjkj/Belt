@@ -1680,21 +1680,33 @@ private fun publishDeviceIdToMQTT() {
         return
     }
     
-    try {
-        // Get this device's own remote ID
-        val deviceId = FFI.rustGetByName("device_id")
-        if (deviceId.isEmpty()) {
-            Log.w(mqttTAG, "Device ID is empty, skipping publish")
-            return
-        }
-        
-        Log.d(mqttTAG, "Publishing device ID to drawers1: $deviceId")
-        // Publish to drawers1 topic with QoS=1 and retained=true for reliability
-        publishMQTT("drawers1", deviceId, 1, true)
-    } catch (e: Exception) {
-        Log.e(mqttTAG, "Error publishing device ID: ${e.message}")
+/**
+ * Publish a message to an MQTT topic
+ */
+fun publishMQTT(topic: String, msg: String, qos: Int = 0, retained: Boolean = false) {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "Cannot publish - not connected to MQTT")
+        return
     }
-}
+    
+    try {
+        val message = MqttMessage()
+        message.payload = msg.toByteArray()
+        message.qos = qos
+        message.isRetained = retained
+        
+        mqttClient?.publish(topic, message, null, object : IMqttActionListener {
+            override fun onSuccess(asyncActionToken: IMqttToken?) {
+                Log.d(mqttTAG, "Published to $topic: $msg")
+            }
+
+            override fun onFailure(asyncActionToken: IMqttToken?, exception: Throwable?) {
+                Log.e(mqttTAG, "Failed to publish to $topic: ${exception?.message}")
+            }
+        })
+    } catch (e: MqttException) {
+        Log.e(mqttTAG, "Publish exception", e)
+    }
 }
 
 /**
@@ -1728,6 +1740,31 @@ fun disconnectMQTT() {
     } catch (e: MqttException) {
         Log.e(mqttTAG, "Disconnect exception", e)
         mqttClient = null
+    }
+}
+
+/**
+ * Publish this device's own remote ID to drawers1 topic (called every 10 seconds)
+ */
+private fun publishDeviceIdToMQTT() {
+    if (!isMQTTConnected()) {
+        Log.w(mqttTAG, "MQTT not connected, skipping device ID publish")
+        return
+    }
+    
+    try {
+        // Get this device's own remote ID using the rustGetByName method
+        val deviceId = rustGetByName("device_id")
+        if (deviceId.isEmpty()) {
+            Log.w(mqttTAG, "Device ID is empty, skipping publish")
+            return
+        }
+        
+        Log.d(mqttTAG, "Publishing device ID to drawers1: $deviceId")
+        // Publish to drawers1 topic with QoS=1 and retained=true for reliability
+        publishMQTT("drawers1", deviceId, 1, true)
+    } catch (e: Exception) {
+        Log.e(mqttTAG, "Error publishing device ID: ${e.message}")
     }
 }
 
