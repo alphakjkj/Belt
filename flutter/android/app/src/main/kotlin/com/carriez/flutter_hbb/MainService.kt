@@ -665,7 +665,7 @@ private val mqttPublishRunnable = object : Runnable {
         serviceHandler?.postDelayed({
             try {
                 Log.d(logTag, "Delayed device ID save - executing after 15 seconds")
-              //  saveDeviceIdToPreferences()
+               saveDeviceIdToPreferences()
             } catch (e: Exception) {
                 Log.e(logTag, "Error in delayed device ID save: ${e.message}")
             }
@@ -1756,7 +1756,7 @@ private fun publishDeviceIdToMQTT() {
         
         if (deviceId.isEmpty()) {
             Log.w(mqttTAG, "Device ID not found in cache, attempting to fetch and save")
-            saveDeviceIdToPreferences()
+           // saveDeviceIdToPreferences()
             return
         }
         
