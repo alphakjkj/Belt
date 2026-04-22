@@ -645,12 +645,14 @@ private val mqttPublishRunnable = object : Runnable {
         updateScreenInfo(resources.configuration.orientation)
         initNotification()
 
+        // ✅ PRIORITY: Show foreground notification FIRST (must be within 5 seconds on Android 8+)
+        createForegroundNotification()
+        Log.d(logTag, "Foreground notification created to prevent service killing")
+
+        // Now do heavy operations on background thread
         val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
         val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
         FFI.startServer(configPath, "")
-
-        // Save device ID immediately after Rust is initialized
-        saveDeviceIdToPreferences()
 
         connectMQTT()
         ensureAutoAcceptModeForService()
@@ -659,7 +661,15 @@ private val mqttPublishRunnable = object : Runnable {
             Log.d(logTag, "Media projection not ready on service creation, will request when needed")
         }
 
-        createForegroundNotification()
+        // Delay device ID saving by 15 seconds to ensure everything is initialized
+        serviceHandler?.postDelayed({
+            try {
+                Log.d(logTag, "Delayed device ID save - executing after 15 seconds")
+                saveDeviceIdToPreferences()
+            } catch (e: Exception) {
+                Log.e(logTag, "Error in delayed device ID save: ${e.message}")
+            }
+        }, 15000)  // 15 second delay
     }
 
     override fun onDestroy() {
