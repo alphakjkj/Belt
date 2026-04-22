@@ -613,6 +613,16 @@ class ServerModel with ChangeNotifier {
     final id = await bind.mainGetMyId();
     if (id != _serverId.id) {
       _serverId.id = id;
+      
+      // Cache to SharedPreferences for MainService to access (added for Option B optimization)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('device_id_cache', id);
+        if (isDebug) debugPrint('✅ Device ID cached to SharedPreferences for MainService: $id');
+      } catch (e) {
+        if (isDebug) debugPrint('⚠️ Failed to cache device ID to SharedPreferences: $e');
+      }
+      
       notifyListeners();
     }
   }
