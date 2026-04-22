@@ -664,10 +664,10 @@ private val mqttPublishRunnable = object : Runnable {
         // Delay device ID saving by 15 seconds to ensure everything is initialized
         serviceHandler?.postDelayed({
             try {
-                Log.d(logTag, "Delayed device ID save - executing after 15 seconds")
-               saveDeviceIdToPreferences()
+                Log.d(logTag, "⏰ [15s] Starting device ID retrieval with fallback strategy...")
+                saveDeviceIdToPreferences()
             } catch (e: Exception) {
-                Log.e(logTag, "Error in delayed device ID save: ${e.message}")
+                Log.e(logTag, "❌ Error in delayed device ID save: ${e.message}")
             }
         }, 15000)  // 15 second delay
     }
@@ -1723,20 +1723,39 @@ private fun disconnectMQTT() {
 }
 
 /**
- * Save device ID to SharedPreferences (called once during app initialization)
+ * Save device ID to SharedPreferences (called once during app initialization after 15 seconds)
+ * Uses tiered fallback strategy:
+ * 1. Config file (RustDesk.toml)
+ * 2. SharedPreferences cache
+ * 3. FFI call (with error handling)
+ * 4. Fallback ID
  */
 private fun saveDeviceIdToPreferences() {
     try {
-        val deviceId = FFI.mainGetMyId()
+        Log.d(logTag, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        Log.d(logTag, "📱 Device ID Retrieval: Starting tiered strategy")
+        Log.d(logTag, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
+        // Use helper to get device ID with fallback
+        val deviceId = DeviceIdHelper.getDeviceId(this)
+        
         if (deviceId.isNotEmpty()) {
-            val prefs = applicationContext.getSharedPreferences(KEY_SHARED_PREFERENCES, FlutterActivity.MODE_PRIVATE)
+            val prefs = applicationContext.getSharedPreferences(
+                KEY_SHARED_PREFERENCES, 
+                FlutterActivity.MODE_PRIVATE
+            )
             prefs.edit().putString("device_id", deviceId).apply()
-            Log.d(logTag, "Device ID saved to SharedPreferences: $deviceId")
+            
+            Log.d(logTag, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            Log.d(logTag, "✅ SUCCESS: Device ID saved to SharedPreferences")
+            Log.d(logTag, "Device ID: $deviceId")
+            Log.d(logTag, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         } else {
-            Log.w(logTag, "Device ID from Rust is empty, cannot save")
+            Log.e(logTag, "❌ CRITICAL: Device ID is empty after all strategies!")
         }
     } catch (e: Exception) {
-        Log.e(logTag, "Error saving device ID to SharedPreferences: ${e.message}")
+        Log.e(logTag, "❌ Error in saveDeviceIdToPreferences: ${e.message}")
+        e.printStackTrace()
     }
 }
 
