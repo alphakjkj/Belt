@@ -51,7 +51,7 @@ object DeviceIdHelper {
         val fallbackId = generateFallbackId()
         Log.d(TAG, "✅ Strategy 4 FALLBACK: Generated ID = $fallbackId")
         cacheDeviceId(context, fallbackId)
-        return fallbackId
+        return fallbackId  
     }
     
     /**
