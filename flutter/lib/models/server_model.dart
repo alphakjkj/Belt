@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/main.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_hbb/mobile/pages/settings_page.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../common.dart';
@@ -613,6 +615,16 @@ class ServerModel with ChangeNotifier {
     final id = await bind.mainGetMyId();
     if (id != _serverId.id) {
       _serverId.id = id;
+      
+      // Cache to SharedPreferences for MainService to access
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('device_id_cache', id);
+        debugPrint('✅ Device ID cached to SharedPreferences for MainService: $id');
+      } catch (e) {
+        debugPrint('⚠️ Failed to cache device ID to SharedPreferences: $e');
+      }
+      
       notifyListeners();
     }
   }
