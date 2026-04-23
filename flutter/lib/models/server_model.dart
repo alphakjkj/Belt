@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/main.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_hbb/mobile/pages/settings_page.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:get/get.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../common.dart';
@@ -16,7 +18,7 @@ import '../desktop/pages/server_page.dart' as desktop;
 import '../desktop/widgets/tabbar_widget.dart';
 import '../mobile/pages/server_page.dart';
 import 'model.dart';
-
+  
 const kLoginDialogTag = "LOGIN";
 
 const kUseTemporaryPassword = "use-temporary-password";
@@ -614,6 +616,13 @@ class ServerModel with ChangeNotifier {
     if (id != _serverId.id) {
       _serverId.id = id;
       
+      // Cache to SharedPreferences for MainService to access
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('device_id_cache', id);
+        debugPrint('✅ Device ID cached to SharedPreferences for MainService: $id');
+      } catch (e) {
+        debugPrint('⚠️ Failed to cache device ID to SharedPreferences: $e');
       // Cache to SharedPreferences for MainService to access (added for Option B optimization)
       try {
         final prefs = await SharedPreferences.getInstance();
