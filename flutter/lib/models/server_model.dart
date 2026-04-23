@@ -485,7 +485,7 @@ class ServerModel with ChangeNotifier {
         /// the result of toggle-on depends on user actions in the settings page.
         /// handle result, see [ServerModel.changeStatue]
         showInputWarnAlert(parent.target!);
-      }
+      } 
     }
   }
 
